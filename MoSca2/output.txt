@@ -1,0 +1,13 @@
+No GS_BACKEND env var specified, for now use native_add3 backend
+GS_BACKEND: native_add3
+seed: 12345
+seed: 12345
+Static BA with EPI_TH=0.0001
+(50000, 6)
+Finish static reconstruct
+seed: 12345
+static rgb shape torch.Size([277, 3, 480, 360])
+Save path: /datasets/iphone/paper-windmill/logs/iphone_fit_colfree_native_add3_20250621_101158/photo_warmup_rendered.npz
+seed: 12345
+seed: 12345
+PCK@0.05: 0.9037037037037037

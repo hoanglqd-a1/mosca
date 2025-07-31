@@ -1,0 +1,5 @@
+class MoCaPrep
+    initialize foundation model
+        depth: metric3d, unidepth, depthcrafter
+        tap model: spatracker, cotracker, bootstapir
+        flow: raft

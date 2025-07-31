@@ -1,0 +1,1 @@
+mosca_precompute.py --cfg ./profile/demo/demo_prep.yaml --ws ./demo/duck

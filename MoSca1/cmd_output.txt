@@ -1,0 +1,9 @@
+No GS_BACKEND env var specified, for now use native_add3 backend
+GS_BACKEND: native_add3
+seed: 12345
+seed: 12345
+Static BA with EPI_TH=0.001
+(50000, 6)
+seed: 12345
+seed: 12345
+seed: 12345
