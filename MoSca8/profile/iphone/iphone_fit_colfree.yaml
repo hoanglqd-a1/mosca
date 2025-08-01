@@ -58,14 +58,14 @@ geo_mosca_viz_interval: 600
 geo_mosca_viz_debug_interval: 600
 
 # * GS init
-gs_static_n_init: 30000
-gs_dynamic_n_init: 200000
+gs_static_n_init: 50000
+gs_dynamic_n_init: 250000
 gs_radius_max: 0.03
 gs_max_sph_order: 3
 
 # * Photo
-photo_total_steps: 2000
-photo_skinning_corr_start_steps: 6000
+photo_total_steps: 8000
+# photo_skinning_corr_start_steps: 6000
 photo_lr_np: 0.0003
 photo_lr_nq: 0.0003
 

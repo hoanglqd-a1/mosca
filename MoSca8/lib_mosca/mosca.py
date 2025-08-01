@@ -627,7 +627,7 @@ class MoSca(nn.Module):
 
         sk_w_un = sk_w_un * sk_mask.float()
         if skinning_weight_correction is not None:
-            assert len(skinning_weight_correction) == len(query_xyz)
+            assert len(skinning_weight_correction) == len(query_xyz), f"{skinning_weight_correction.shape}, {query_xyz.shape}"
             assert skinning_weight_correction.shape[1] == self.skinning_k
             if self.w_corr_maintain_sum_flag:
                 tmp_sk_w_sum = abs(sk_w_un).sum(-1)[:, None] # N,1

@@ -388,10 +388,20 @@ class DynSCFGaussian(nn.Module):
         logging.warning((f"ED Model convert to inference mode"))
         return
 
-    def forward(self, t: int, active_sph_order=None, nn_fusion=None, nearby_t_mask=7):
-        lower_bount_t = max(0, t-nearby_t_mask)
-        upper_bount_t = min(self.T - 1, t + nearby_t_mask)
-        neighboring_t_mask = (self.ref_time >= lower_bount_t) & (self.ref_time <= upper_bount_t)
+    def forward(self, t: int, active_sph_order=None, nn_fusion=None, nearby_t_mask=10):
+        if 2 * nearby_t_mask + 1 > self.T:
+            lower_bound_t, upper_bound_t = 0, self.T - 1
+        else:
+            lower_bound_t =  t-nearby_t_mask
+            upper_bound_t = t + nearby_t_mask
+            if lower_bound_t < 0:
+                lower_bound_t = 0
+                upper_bound_t = 2 * nearby_t_mask
+            if upper_bound_t > self.T - 1:
+                lower_bound_t = self.T - 1 - 2 * nearby_t_mask
+                upper_bound_t = self.T - 1
+        neighboring_t_mask = (self.ref_time >= lower_bound_t) & (self.ref_time <= upper_bound_t)
+        assert neighboring_t_mask.sum() > 0, f"{self.ref_time}"
         assert t < self.T, "t is out of range!"
         if active_sph_order is None:
             active_sph_order = int(self.max_sph_order)
@@ -416,6 +426,11 @@ class DynSCFGaussian(nn.Module):
                 query_dir=self.baked_query_dir,
             )
         else:
+            attach_node = self.attach_ind[neighboring_t_mask]
+            query_xyz = self.get_xyz()[neighboring_t_mask]
+            query_dir = self.get_R_mtx()[neighboring_t_mask]
+            query_tid = self.ref_time[neighboring_t_mask]
+            assert query_xyz.numel() > 0 and query_dir.numel() > 0 and attach_node.numel() > 0 and query_tid.numel() > 0, f"{lower_bound_t} to {upper_bound_t}, {self.get_xyz().shape}"
             mu_live, fr_live = self.scf.warp(
                 attach_node_ind=self.attach_ind[neighboring_t_mask],
                 query_xyz=self.get_xyz()[neighboring_t_mask],
@@ -1208,7 +1223,9 @@ class DynSCFGaussian(nn.Module):
 
         # update leaf buffer
         self.attach_ind = self.attach_ind[valid_points_mask]
+        print("unique time", self.ref_time.unique())
         self.ref_time = self.ref_time[valid_points_mask]
+        print("unique time", self.ref_time.unique())
         return
 
     def reset_opacity(self, optimizer, value=0.01, verbose=True):

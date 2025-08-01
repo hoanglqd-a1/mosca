@@ -443,7 +443,7 @@ class DynReconstructionSolver:
         photo_s2d_trans_steps=[],
     ):
         logging.info(f"Finetune with GS-BACKEND={GS_BACKEND.lower()}")
-        neightbor_time_interval = 7
+        neightbor_time_interval = 10
         torch.cuda.empty_cache()
         n_frame = 1
 
@@ -629,7 +629,6 @@ class DynReconstructionSolver:
                     add_buffer=add_buffer,
                 )
                 render_dict_list.append(render_dict)
-
 
                 # compute losses
                 rgb_sup_mask = s2d.get_mask_by_key(sup_mask_type)[view_ind]
@@ -910,9 +909,18 @@ class DynReconstructionSolver:
                 and d_flag
             ):
                 time_ind = view_ind_list[0]
-                lower_bount_t = max(0, time_ind- neightbor_time_interval)
-                upper_bount_t = min(d_model.T - 1, time_ind + neightbor_time_interval)
-                neighboring_t_mask = (d_model.ref_time >= lower_bount_t) & (d_model.ref_time <= upper_bount_t)
+                if 2 * neightbor_time_interval + 1 > d_model.T:
+                    lower_bound_t, upper_bound_t = 0, d_model.T - 1
+                else:
+                    lower_bound_t =  time_ind - neightbor_time_interval
+                    upper_bound_t = time_ind + neightbor_time_interval
+                    if lower_bound_t < 0:
+                        lower_bound_t = 0
+                        upper_bound_t = 2 * neightbor_time_interval
+                    if upper_bound_t > d_model.T - 1:
+                        lower_bound_t = d_model.T - 1 - 2 * neightbor_time_interval
+                        upper_bound_t = d_model.T - 1
+                neighboring_t_mask = (d_model.ref_time >= lower_bound_t) & (d_model.ref_time <= upper_bound_t)
                 apply_gs_control(
                     render_list=render_dict_list,
                     model=d_model,
@@ -946,27 +954,27 @@ class DynReconstructionSolver:
                     max_gs_per_new_node=dyn_node_densify_max_gs_per_new_node,
                 )
 
-            # # error grow
-            # if d_flag and step in dyn_error_grow_steps:
-            #     error_grow_dyn_model(
-            #         s2d,
-            #         cams,
-            #         s_model,
-            #         d_model,
-            #         optimizer_dynamic,
-            #         step,
-            #         dyn_error_grow_th,
-            #         dyn_error_grow_num_frames,
-            #         dyn_error_grow_subsample,
-            #         viz_dir=self.viz_dir,
-            #         opacity_init_factor=self.opacity_init_factor,
-            #     )
-            # if d_flag and step in dyn_scf_prune_steps:
-            #     d_model.prune_nodes(
-            #         optimizer_dynamic,
-            #         prune_sk_th=dyn_scf_prune_sk_th,
-            #         viz_fn=osp.join(self.viz_dir, f"scf_node_prune_at_step={step}"),
-            #     )
+            # error grow
+            if d_flag and step in dyn_error_grow_steps:
+                error_grow_dyn_model(
+                    s2d,
+                    cams,
+                    s_model,
+                    d_model,
+                    optimizer_dynamic,
+                    step,
+                    dyn_error_grow_th,
+                    dyn_error_grow_num_frames,
+                    dyn_error_grow_subsample,
+                    viz_dir=self.viz_dir,
+                    opacity_init_factor=self.opacity_init_factor,
+                )
+            if d_flag and step in dyn_scf_prune_steps:
+                d_model.prune_nodes(
+                    optimizer_dynamic,
+                    prune_sk_th=dyn_scf_prune_sk_th,
+                    viz_fn=osp.join(self.viz_dir, f"scf_node_prune_at_step={step}"),
+                )
 
             loss_rgb_list.append(loss_rgb.item())
             loss_dep_list.append(loss_dep.item())
@@ -1088,9 +1096,18 @@ class DynReconstructionSolver:
                     corr_grad = [torch.zeros_like(photo_grad[0])]
                     if d_flag:
                         t = view_ind
-                        lower_bount_t = max(0, t-neightbor_time_interval)
-                        upper_bount_t = min(d_model.T - 1, t + neightbor_time_interval)
-                        neighboring_t_mask = (d_model.ref_time >= lower_bount_t) & (d_model.ref_time <= upper_bount_t)
+                        if 2 * neightbor_time_interval + 1 > d_model.T:
+                            lower_bound_t, upper_bound_t = 0, d_model.T - 1
+                        else:
+                            lower_bound_t =  t - neightbor_time_interval
+                            upper_bound_t = t + neightbor_time_interval
+                            if lower_bound_t < 0:
+                                lower_bound_t = 0
+                                upper_bound_t = 2 * neightbor_time_interval
+                            if upper_bound_t > d_model.T - 1:
+                                lower_bound_t = d_model.T - 1 - 2 * neightbor_time_interval
+                                upper_bound_t = d_model.T - 1
+                        neighboring_t_mask = (d_model.ref_time >= lower_bound_t) & (d_model.ref_time <= upper_bound_t)
                         photo_grad.append(
                             d_model.xyz_gradient_accum[neighboring_t_mask]
                             / torch.clamp(d_model.xyz_gradient_denom[neighboring_t_mask], min=1e-6)
