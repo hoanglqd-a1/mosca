@@ -583,7 +583,8 @@ class DynReconstructionSolver:
                         corr_dst_ind_list.append(corr_dst_ind)
                     else:
                         corr_dst_ind = view_ind
-                        while corr_dst_ind == view_ind:
+                        view_time_range_lower, view_time_range_upper = self.get_time_range(view_ind, neightbor_time_interval, cams.T)
+                        while corr_dst_ind == view_ind or corr_dst_ind < view_time_range_lower or corr_dst_ind > view_time_range_upper:
                             corr_dst_ind = np.random.choice(cams.T)
                         corr_dst_ind_list.append(corr_dst_ind)
                 corr_dst_ind_list = np.array(corr_dst_ind_list)
@@ -602,15 +603,31 @@ class DynReconstructionSolver:
                 gs5 = [list(s_model())]
 
                 add_buffer = None
+                if d_flag:
+                    gs5.append(list(d_model(view_ind)))
+
                 if corr_exe_flag:
                     # ! detach bg pts
-                    dst_xyz = torch.cat([gs5[0][0].detach(), d_model(dst_ind)[0]], 0)
+                    src_time_range_lower, src_time_range_upper = self.get_time_range(view_ind, neightbor_time_interval, cams.T)
+                    dst_time_range_lower, dst_time_range_upper = self.get_time_range(dst_ind, neightbor_time_interval, cams.T)
+
+                    src_time_range_mask = (d_model.ref_time >= src_time_range_lower) & (d_model.ref_time <= src_time_range_upper)
+                    dst_time_range_mask = (d_model.ref_time >= dst_time_range_lower) & (d_model.ref_time <= dst_time_range_upper)                    
+                    intersected_time_range_mask = src_time_range_mask & dst_time_range_mask
+
+                    src_time_range_mask_idx = src_time_range_mask.nonzero(as_tuple=True)[0]
+                    dst_time_range_mask_idx = dst_time_range_mask.nonzero(as_tuple=True)[0]
+                    intersected_time_range_mask_idx = intersected_time_range_mask.nonzero(as_tuple=True)[0]
+
+                    intersected_given_src_mask = torch.isin(src_time_range_mask_idx, intersected_time_range_mask_idx)
+                    intersected_given_dst_mask = torch.isin(dst_time_range_mask_idx, intersected_time_range_mask_idx)
+                    assert intersected_given_src_mask.sum() == intersected_given_dst_mask.sum() == intersected_time_range_mask.sum(), f"{intersected_given_src_mask.sum()}, {intersected_given_dst_mask.sum()}, {intersected_time_range_mask.sum()}"
+
+                    dst_xyz = torch.cat([gs5[0][0].detach(), d_model(dst_ind)[0][intersected_given_dst_mask]], 0)
                     dst_xyz_cam = cams.trans_pts_to_cam(dst_ind, dst_xyz)
                     if GS_BACKEND in ["native_add3"]:
                         add_buffer = dst_xyz_cam
 
-                if d_flag:
-                    gs5.append(list(d_model(view_ind)))
                 if random_bg:
                     bg_color = np.random.rand(3).tolist()
                 else:
@@ -618,16 +635,30 @@ class DynReconstructionSolver:
                 if GS_BACKEND in ["natie_add3"]:
                     # the render internally has another protection, because if not set, the grad has bug
                     bg_color += [0.0, 0.0, 0.0]
-
-                render_dict = render(
-                    gs5,
-                    s2d.H,
-                    s2d.W,
-                    cams.K(s2d.H, s2d.W),
-                    cams.T_cw(view_ind),
-                    bg_color=bg_color,
-                    add_buffer=add_buffer,
-                )
+                if corr_exe_flag:
+                    intersected_d_gs = [
+                        gs5[1][i][intersected_given_src_mask] for i in range(5)
+                    ]
+                    intersected_time_range_gs5 = [gs5[0], intersected_d_gs]
+                    render_dict = render(
+                        intersected_time_range_gs5,
+                        s2d.H,
+                        s2d.W,
+                        cams.K(s2d.H, s2d.W),
+                        cams.T_cw(view_ind),
+                        bg_color=bg_color,
+                        add_buffer=add_buffer,
+                    )
+                else:
+                    render_dict = render(
+                        gs5,
+                        s2d.H,
+                        s2d.W,
+                        cams.K(s2d.H, s2d.W),
+                        cams.T_cw(view_ind),
+                        bg_color=bg_color,
+                        add_buffer=add_buffer,
+                    )
                 render_dict_list.append(render_dict)
 
                 # compute losses
@@ -908,19 +939,26 @@ class DynReconstructionSolver:
                 and step < d_gs_ctrl_end
                 and d_flag
             ):
-                time_ind = view_ind_list[0]
-                if 2 * neightbor_time_interval + 1 > d_model.T:
-                    lower_bound_t, upper_bound_t = 0, d_model.T - 1
-                else:
-                    lower_bound_t =  time_ind - neightbor_time_interval
-                    upper_bound_t = time_ind + neightbor_time_interval
-                    if lower_bound_t < 0:
-                        lower_bound_t = 0
-                        upper_bound_t = 2 * neightbor_time_interval
-                    if upper_bound_t > d_model.T - 1:
-                        lower_bound_t = d_model.T - 1 - 2 * neightbor_time_interval
-                        upper_bound_t = d_model.T - 1
+                lower_bound_t, upper_bound_t = self.get_time_range(view_ind_list[0], neightbor_time_interval, cams.T)
                 neighboring_t_mask = (d_model.ref_time >= lower_bound_t) & (d_model.ref_time <= upper_bound_t)
+
+                if corr_exe_flag and step > dyn_node_densify_record_start_steps:
+                    # record the geo gradient
+                    for corr_render_dict in corr_render_dict_list:                        
+                        view_space_tensor_grad = torch.zeros((d_model.N, 3), dtype=torch.float32).to(s_model.device)
+                        grad_filter = torch.zeros((d_model.N), dtype=bool).to(s_model.device)
+
+                        corr_render_dict_d_gaussian_cnt = intersected_time_range_mask.sum()
+                        
+                        view_space_tensor_grad[intersected_time_range_mask] = corr_render_dict["viewspace_points"].grad[-corr_render_dict_d_gaussian_cnt:] / lambda_track
+                        grad_filter[intersected_time_range_mask] = corr_render_dict["visibility_filter"][-corr_render_dict_d_gaussian_cnt:]
+
+                        d_model.record_corr_grad(
+                            # ! normalize the gradient by loss weight.
+                            view_space_tensor_grad,
+                            grad_filter,
+                        )
+                
                 apply_gs_control(
                     render_list=render_dict_list,
                     model=d_model,
@@ -933,15 +971,6 @@ class DynReconstructionSolver:
                     ref_time_mask=neighboring_t_mask
                 )
 
-                if corr_exe_flag and step > dyn_node_densify_record_start_steps:
-                    # record the geo gradient
-                    for corr_render_dict in corr_render_dict_list:
-                        d_model.record_corr_grad(
-                            # ! normalize the gradient by loss weight.
-                            corr_render_dict["viewspace_points"].grad[-d_model.N :]
-                            / lambda_track,
-                            corr_render_dict["visibility_filter"][-d_model.N :],
-                        )
 
             # d_model to s_model transfer [2] append to static model
             if dynamic_to_static_transfer_flag:
@@ -1332,3 +1361,17 @@ class DynReconstructionSolver:
         dep = torch.stack([r["dep"] for r in ret], 0)
         alp = torch.stack([r["alpha"] for r in ret], 0)
         return rgb, dep, alp
+    
+    def get_time_range(self, time_ind, neighbor_frame, video_length):
+        if 2 * neighbor_frame + 1 > video_length:
+            lower_bound_t, upper_bound_t = 0, video_length - 1
+        else:
+            lower_bound_t =  time_ind - neighbor_frame
+            upper_bound_t = time_ind + neighbor_frame
+            if lower_bound_t < 0:
+                lower_bound_t = 0
+                upper_bound_t = 2 * neighbor_frame
+            if upper_bound_t > video_length - 1:
+                lower_bound_t = video_length - 1 - 2 * neighbor_frame
+                upper_bound_t = video_length - 1
+        return lower_bound_t, upper_bound_t

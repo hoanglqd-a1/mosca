@@ -388,30 +388,30 @@ class DynSCFGaussian(nn.Module):
         logging.warning((f"ED Model convert to inference mode"))
         return
 
-    def forward(self, t: int, active_sph_order=None, nn_fusion=None, nearby_t_mask=10):
-        if 2 * nearby_t_mask + 1 > self.T:
-            lower_bound_t, upper_bound_t = 0, self.T - 1
+    def forward(self, t: int, active_sph_order=None, nn_fusion=None, nn_frames=10):
+        if 2 * nn_frames + 1 > self.T:
+            lower_t, upper_t = 0, self.T - 1
         else:
-            lower_bound_t =  t-nearby_t_mask
-            upper_bound_t = t + nearby_t_mask
-            if lower_bound_t < 0:
-                lower_bound_t = 0
-                upper_bound_t = 2 * nearby_t_mask
-            if upper_bound_t > self.T - 1:
-                lower_bound_t = self.T - 1 - 2 * nearby_t_mask
-                upper_bound_t = self.T - 1
-        neighboring_t_mask = (self.ref_time >= lower_bound_t) & (self.ref_time <= upper_bound_t)
-        assert neighboring_t_mask.sum() > 0, f"{self.ref_time}"
+            lower_t =  t - nn_frames
+            upper_t = t + nn_frames
+            if lower_t < 0:
+                lower_t = 0
+                upper_t = 2 * nn_frames
+            if upper_t > self.T - 1:
+                lower_t = self.T - 1 - 2 * nn_frames
+                upper_t = self.T - 1
+        nn_frames_mask = (self.ref_time >= lower_t) & (self.ref_time <= upper_t)
+        assert nn_frames_mask.sum() > 0, f"{self.ref_time}"
         assert t < self.T, "t is out of range!"
         if active_sph_order is None:
             active_sph_order = int(self.max_sph_order)
         else:
             assert active_sph_order <= self.max_sph_order.item(), f"{active_sph_order} > {self.max_sph_order.item()}"
 
-        s = self.get_s[neighboring_t_mask]
-        o = self.get_o[neighboring_t_mask]
+        s = self.get_s[nn_frames_mask]
+        o = self.get_o[nn_frames_mask]
         sph_dim = 3 * sph_order2nfeat(active_sph_order)
-        sph = self.get_c[:, :sph_dim][neighboring_t_mask]
+        sph = self.get_c[:, :sph_dim][nn_frames_mask]
 
         if self.fast_inference_flag:
             mu_live, fr_live = self.scf.fast_warp(
@@ -426,16 +426,16 @@ class DynSCFGaussian(nn.Module):
                 query_dir=self.baked_query_dir,
             )
         else:
-            attach_node = self.attach_ind[neighboring_t_mask]
-            query_xyz = self.get_xyz()[neighboring_t_mask]
-            query_dir = self.get_R_mtx()[neighboring_t_mask]
-            query_tid = self.ref_time[neighboring_t_mask]
-            assert query_xyz.numel() > 0 and query_dir.numel() > 0 and attach_node.numel() > 0 and query_tid.numel() > 0, f"{lower_bound_t} to {upper_bound_t}, {self.get_xyz().shape}"
+            attach_node = self.attach_ind[nn_frames_mask]
+            query_xyz = self.get_xyz()[nn_frames_mask]
+            query_dir = self.get_R_mtx()[nn_frames_mask]
+            query_tid = self.ref_time[nn_frames_mask]
+            assert query_xyz.numel() > 0 and query_dir.numel() > 0 and attach_node.numel() > 0 and query_tid.numel() > 0, f"{lower_t} to {upper_t}, {self.get_xyz().shape}"
             mu_live, fr_live = self.scf.warp(
-                attach_node_ind=self.attach_ind[neighboring_t_mask],
-                query_xyz=self.get_xyz()[neighboring_t_mask],
-                query_dir=self.get_R_mtx()[neighboring_t_mask],
-                query_tid=self.ref_time[neighboring_t_mask],
+                attach_node_ind=self.attach_ind[nn_frames_mask],
+                query_xyz=self.get_xyz()[nn_frames_mask],
+                query_dir=self.get_R_mtx()[nn_frames_mask],
+                query_tid=self.ref_time[nn_frames_mask],
                 target_tid=t,
                 skinning_w_corr=(
                     self._skinning_weight if self.w_correction_flag else None
@@ -807,9 +807,10 @@ class DynSCFGaussian(nn.Module):
     def gradient_based_node_densification(
         self, optimizer, gradient_th, resample_factor=1.0, max_gs_per_new_node=100000 #32
     ):
-
+        assert self.corr_gradient_accum.shape[0] == self.N
         grad = self.corr_gradient_accum / (self.corr_gradient_denom + 1e-6)
         candidate_mask = grad > gradient_th  # N
+        print("candidate", candidate_mask.shape)
 
         if not candidate_mask.any():
             logging.info(f"No node to densify")
@@ -817,7 +818,7 @@ class DynSCFGaussian(nn.Module):
 
         gs_mu_list, gs_fr_list = [], []
         for t in range(self.T):
-            mu, fr, _, _, _ = self.forward(t)
+            mu, fr, _, _, _ = self.forward(t, nn_frames=self.T)
             gs_mu_list.append(mu[candidate_mask])
             gs_fr_list.append(fr[candidate_mask])
 
@@ -1152,7 +1153,7 @@ class DynSCFGaussian(nn.Module):
             logging.info(f"Densify: Clone[+] {n_clone}, Split[+] {n_split}")
             # logging.info(f"Densify: Clone[+] {n_clone}")
         # torch.cuda.empty_cache()
-        return
+        return n_clone + n_split
 
     def prune_points(
         self,
@@ -1223,9 +1224,7 @@ class DynSCFGaussian(nn.Module):
 
         # update leaf buffer
         self.attach_ind = self.attach_ind[valid_points_mask]
-        print("unique time", self.ref_time.unique())
         self.ref_time = self.ref_time[valid_points_mask]
-        print("unique time", self.ref_time.unique())
         return
 
     def reset_opacity(self, optimizer, value=0.01, verbose=True):
@@ -1346,3 +1345,17 @@ def subsample_vtx(vtx, voxel_size):
     )
     assert not (candidate == 0).all(dim=-1).any(), "voxel resampling has an error!"
     return candidate
+
+def get_time_range(time_ind, neighbor_frame, video_length):
+    if 2 * neighbor_frame + 1 > video_length:
+        lower_bound_t, upper_bound_t = 0, video_length - 1
+    else:
+        lower_bound_t =  time_ind - neighbor_frame
+        upper_bound_t = time_ind + neighbor_frame
+        if lower_bound_t < 0:
+            lower_bound_t = 0
+            upper_bound_t = 2 * neighbor_frame
+        if upper_bound_t > video_length - 1:
+            lower_bound_t = video_length - 1 - 2 * neighbor_frame
+            upper_bound_t = video_length - 1
+    return lower_bound_t, upper_bound_t

@@ -619,7 +619,7 @@ def photometric_reconstruct(ws, log_path, fit_cfg):
         lambda_arap_len=getattr(fit_cfg, "photo_lambda_arap_len", 10.0),
         lambda_small_w_reg=getattr(fit_cfg, "photo_lambda_small_w_reg", 0.0),
         # track loss
-        lambda_track=0,
+        lambda_track=getattr(fit_cfg, "photo_lambda_track", 0.0),
         track_flow_chance=getattr(fit_cfg, "photo_track_flow_chance", 0.0),
         track_flow_interval_candidates=getattr(
             fit_cfg, "photo_track_flow_interval_candidates", [1, 3]
