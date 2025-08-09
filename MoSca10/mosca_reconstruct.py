@@ -737,7 +737,7 @@ if __name__ == "__main__":
     photometric_warmup(
         args.ws, logdir, cfg
     )  # this is optional, if not set, will directly skip and return.
-    # scaffold_reconstruct(args.ws, logdir, cfg)
+    scaffold_reconstruct(args.ws, logdir, cfg)
     photometric_reconstruct(args.ws, logdir, cfg)
 
     # * EVAL AND VIZ

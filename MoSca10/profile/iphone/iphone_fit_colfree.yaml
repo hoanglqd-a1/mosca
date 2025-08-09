@@ -104,10 +104,10 @@ photo_dyn_scf_prune_sk_th: 0.02
 # dyn_error_grow_th: 0.3
 # dyn_error_grow_num_frames: 2
 
-photo_dyn_node_densify_steps: [4250, 5250]
-photo_dyn_node_densify_grad_th: 0.03
-photo_dyn_node_densify_record_start_steps: 2000
-
-# photo_dyn_node_densify_steps: [200]
+# photo_dyn_node_densify_steps: [4250, 5250]
 # photo_dyn_node_densify_grad_th: 0.03
-# photo_dyn_node_densify_record_start_steps: 0
+# photo_dyn_node_densify_record_start_steps: 2000
+
+photo_dyn_node_densify_steps: []
+photo_dyn_node_densify_grad_th: 0.04
+photo_dyn_node_densify_record_start_steps: 2000

@@ -72,7 +72,7 @@ photo_lr_nq: 0.0003
 photo_lr_w: 0.003
 photo_lambda_small_w_reg: 0.3
 
-photo_lambda_track: 0.1
+photo_lambda_track: 0.01
 photo_track_loss_interval: 3
 photo_track_flow_chance: 0.0
 track_flow_interval_candidates: [1, 3]
@@ -105,7 +105,6 @@ photo_dyn_scf_prune_sk_th: 0.02
 # dyn_error_grow_num_frames: 2
 
 photo_dyn_node_densify_steps: [4250, 5250]
-# photo_dyn_node_densify_steps: []
 photo_dyn_node_densify_grad_th: 0.03
 photo_dyn_node_densify_record_start_steps: 2000
 

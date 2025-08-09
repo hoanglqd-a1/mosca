@@ -443,7 +443,7 @@ class DynReconstructionSolver:
         photo_s2d_trans_steps=[],
     ):
         logging.info(f"Finetune with GS-BACKEND={GS_BACKEND.lower()}")
-        neightbor_time_interval = 10
+        neighbor_time_interval = 10
         torch.cuda.empty_cache()
         n_frame = 1
 
@@ -524,6 +524,7 @@ class DynReconstructionSolver:
             )
 
         for step in tqdm(range(total_steps)):
+            corr_flag = lambda_track > 0.0 and d_flag and (step not in dyn_node_densify_steps)
             if step % 200 == 0:
                 logging.info(
                     f"Step {step}/{total_steps}, \n"
@@ -583,7 +584,7 @@ class DynReconstructionSolver:
                         corr_dst_ind_list.append(corr_dst_ind)
                     else:
                         corr_dst_ind = view_ind
-                        view_time_range_lower, view_time_range_upper = self.get_time_range(view_ind, neightbor_time_interval, cams.T)
+                        view_time_range_lower, view_time_range_upper = self.get_time_range(view_ind, neighbor_time_interval, cams.T)
                         while corr_dst_ind == view_ind or corr_dst_ind < view_time_range_lower or corr_dst_ind > view_time_range_upper:
                             corr_dst_ind = np.random.choice(cams.T)
                         corr_dst_ind_list.append(corr_dst_ind)
@@ -608,8 +609,8 @@ class DynReconstructionSolver:
 
                 if corr_exe_flag:
                     # ! detach bg pts
-                    src_time_range_lower, src_time_range_upper = self.get_time_range(view_ind, neightbor_time_interval, cams.T)
-                    dst_time_range_lower, dst_time_range_upper = self.get_time_range(dst_ind, neightbor_time_interval, cams.T)
+                    src_time_range_lower, src_time_range_upper = self.get_time_range(view_ind, neighbor_time_interval, cams.T)
+                    dst_time_range_lower, dst_time_range_upper = self.get_time_range(dst_ind, neighbor_time_interval, cams.T)
 
                     src_time_range_mask = (d_model.ref_time >= src_time_range_lower) & (d_model.ref_time <= src_time_range_upper)
                     dst_time_range_mask = (d_model.ref_time >= dst_time_range_lower) & (d_model.ref_time <= dst_time_range_upper)                    
@@ -939,7 +940,7 @@ class DynReconstructionSolver:
                 and step < d_gs_ctrl_end
                 and d_flag
             ):
-                lower_bound_t, upper_bound_t = self.get_time_range(view_ind_list[0], neightbor_time_interval, cams.T)
+                lower_bound_t, upper_bound_t = self.get_time_range(view_ind_list[0], neighbor_time_interval, cams.T)
                 neighboring_t_mask = (d_model.ref_time >= lower_bound_t) & (d_model.ref_time <= upper_bound_t)
 
                 if corr_exe_flag and step > dyn_node_densify_record_start_steps:
@@ -1125,16 +1126,16 @@ class DynReconstructionSolver:
                     corr_grad = [torch.zeros_like(photo_grad[0])]
                     if d_flag:
                         t = view_ind
-                        if 2 * neightbor_time_interval + 1 > d_model.T:
+                        if 2 * neighbor_time_interval + 1 > d_model.T:
                             lower_bound_t, upper_bound_t = 0, d_model.T - 1
                         else:
-                            lower_bound_t =  t - neightbor_time_interval
-                            upper_bound_t = t + neightbor_time_interval
+                            lower_bound_t =  t - neighbor_time_interval
+                            upper_bound_t = t + neighbor_time_interval
                             if lower_bound_t < 0:
                                 lower_bound_t = 0
-                                upper_bound_t = 2 * neightbor_time_interval
+                                upper_bound_t = 2 * neighbor_time_interval
                             if upper_bound_t > d_model.T - 1:
-                                lower_bound_t = d_model.T - 1 - 2 * neightbor_time_interval
+                                lower_bound_t = d_model.T - 1 - 2 * neighbor_time_interval
                                 upper_bound_t = d_model.T - 1
                         neighboring_t_mask = (d_model.ref_time >= lower_bound_t) & (d_model.ref_time <= upper_bound_t)
                         photo_grad.append(

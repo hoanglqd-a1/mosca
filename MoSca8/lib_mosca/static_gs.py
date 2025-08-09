@@ -468,7 +468,7 @@ class StaticGaussian(nn.Module):
     ):
         grads = self.xyz_gradient_accum / self.xyz_gradient_denom
         grads[grads.isnan()] = 0.0
-
+        
         # n_clone = self._densify_and_clone(optimizer, grads, max_grad)
         n_clone = self._densify_and_clone(
             optimizer, grads, max_grad, percent_dense * extent
@@ -476,7 +476,6 @@ class StaticGaussian(nn.Module):
         n_split = self._densify_and_split(
             optimizer, grads, max_grad, percent_dense * extent, N=2
         )
-
         if verbose:
             logging.info(f"Densify: Clone[+] {n_clone}, Split[+] {n_split}")
             # logging.info(f"Densify: Clone[+] {n_clone}")

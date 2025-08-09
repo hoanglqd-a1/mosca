@@ -811,9 +811,6 @@ class DynReconstructionSolver:
             else:
                 loss_small_w = torch.zeros_like(loss_rgb)
 
-            # loss_isotropic = torch.sum(torch.std(s_model.get_s, dim=1)) + torch.sum(torch.std(d_model.get_s, dim=1))
-            loss_opacity = torch.sum(s_model.get_o * torch.log(s_model.get_o)) + torch.sum(d_model.get_o * torch.log(d_model.get_o)) 
-
             loss = (
                 loss_rgb * lambda_rgb
                 + loss_dep * lambda_dep
@@ -829,9 +826,11 @@ class DynReconstructionSolver:
                 + loss_acc_rot_reg * lambda_acc_rot_reg
                 + loss_small_w * lambda_small_w_reg
                 + loss_track * lambda_track
-                + 0.1 * loss_isotropic
-                + 0.1 * loss_opacity
             )
+            if step >= s_gs_ctrl_end and step >= d_gs_ctrl_end:
+                loss_isotropic = torch.mean(torch.std(s_model.get_s, dim=1)) + torch.mean(torch.std(d_model.get_s, dim=1))
+                loss_opacity = - torch.mean(s_model.get_o * torch.log(s_model.get_o)) - torch.mean(d_model.get_o * torch.log(d_model.get_o)) 
+                loss += 0.001 * loss_isotropic
 
             loss.backward()
             if step % 200 == 0:
@@ -850,7 +849,7 @@ class DynReconstructionSolver:
                     f"loss_acc_xyz_reg: {loss_acc_xyz_reg.item():.4f}, "
                     f"loss_acc_rot_reg: {loss_acc_rot_reg.item():.4f}, "
                     f"loss_small_w: {loss_small_w.item():.4f}, "
-                    f"loss_track: {loss_track.item():.4f}"
+                    f"loss_track: {loss_track.item():.4f} "
                 )
                 logging.info(
                     f"Step {step}/{total_steps}, \n"
