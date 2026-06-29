@@ -1,0 +1,6 @@
+[submodule "lib_prior/depth_models/UniDepth"]
+	path = lib_prior/depth_models/UniDepth
+	url = https://github.com/lpiccinelli-eth/UniDepth.git
+[submodule "lib_prior/depth_models/depth_anything_v2"]
+	path = lib_prior/depth_models/depth_anything_v2
+	url = https://github.com/DepthAnything/Depth-Anything-V2.git
